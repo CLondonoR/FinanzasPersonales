@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finanzas — Cuentas y Net Worth</title>
-  <meta name="description" content="App para administrar cuentas débito/crédito, registrar entradas por fecha y visualizar evolución del Net Worth." />
-  <!-- Chart.js + date adapter (para ejes de tiempo) -->
+  <title>Finanzas — Registros, Cuentas (Gráficas), Fondos y Net Worth</title>
+  <meta name="description" content="App para registrar cuentas y fondos con entradas por fecha, ver gráficas por entidad y evolución del Net Worth." />
+
+  <!-- Chart.js + date adapter (requiere Internet) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
 
@@ -33,7 +34,7 @@
       color:var(--text);
       font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
     }
-    .container{ max-width:1100px; margin: 20px auto 40px; padding: 0 16px; }
+    .container{ max-width:1150px; margin: 20px auto 40px; padding: 0 16px; }
     header{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px; }
     h1{ margin:0; font-size:22px; letter-spacing:.2px }
     .subtitle{ color:var(--muted); font-size:13px }
@@ -46,7 +47,7 @@
       box-shadow: 0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03);
     }
     .muted{ color:var(--muted) }
-    .tabs { display:flex; gap:8px; margin:10px 0 18px }
+    .tabs { display:flex; gap:8px; margin:10px 0 18px; flex-wrap:wrap }
     .tab-btn{
       appearance:none; border:1px solid var(--border); background:#0b1020; color:var(--text);
       padding:10px 14px; border-radius:10px; cursor:pointer;
@@ -60,8 +61,8 @@
       background: #0b1020; color:var(--text); outline:none;
     }
     input[type="text"]::placeholder{ color:#6b7280 }
-    .row{ display:flex; gap:12px; align-items:end }
-    .row > * { flex: 1 }
+    .row{ display:flex; gap:12px; align-items:end; flex-wrap:wrap }
+    .row > * { flex: 1 1 220px }
     .actions{ display:flex; gap:10px; flex-wrap:wrap }
     button{
       appearance:none; border:1px solid var(--border); background:#0b1020; color:var(--text);
@@ -81,6 +82,7 @@
     }
     .badge.debit{ border-color: rgba(34,197,94,.35); color:#c7f9d4; background: rgba(34,197,94,.08) }
     .badge.credit{ border-color: rgba(96,165,250,.4); color:#e0edff; background: rgba(96,165,250,.08) }
+    .badge.fund{ border-color: rgba(248,223,166,.4); color:#fff3d3; background: rgba(248,223,166,.08) }
     .totals{ display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:12px; }
     @media (max-width: 640px){ .totals{ grid-template-columns: 1fr } }
     .kpi{ padding:14px; border:1px solid var(--border); border-radius:12px; background:#0b1020 }
@@ -94,75 +96,106 @@
     .warn{ color: var(--warning) }
     .footer{ margin-top:18px; color:var(--muted); font-size:12px }
     .sr-only{ position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden }
-    .spacer{ height:8px }
+    .spacer{ height:10px }
     .chart-wrap{ padding:10px; border:1px solid var(--border); border-radius:12px; background:#0b1020 }
+    .section-title{ margin:0 0 8px; font-size:16px }
+    .subcard{ border:1px dashed var(--border); border-radius:12px; padding:12px; background:rgba(0,0,0,.05) }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <div>
-        <h1>Finanzas personales — Cuentas & Net Worth</h1>
-        <div class="subtitle">Registra cuentas, entradas por fecha y visualiza la evolución del Net Worth.</div>
+        <h1>Finanzas — Registros, Cuentas (Gráficas), Fondos y Net Worth</h1>
+        <div class="subtitle">Agrega cuentas y fondos, registra saldos por fecha y visualiza su evolución. Net Worth = Activos (Débito + Fondos) − Crédito.</div>
       </div>
       <div class="muted" id="lastUpdated" aria-live="polite"></div>
     </header>
 
     <!-- Tabs -->
     <div class="tabs" role="tablist" aria-label="Secciones">
-      <button id="tabAccounts" class="tab-btn active" role="tab" aria-selected="true" aria-controls="panelAccounts">Cuentas (Débito & Crédito)</button>
+      <button id="tabAdd" class="tab-btn active" role="tab" aria-selected="true" aria-controls="panelAdd">Agregar registros</button>
+      <button id="tabAccounts" class="tab-btn" role="tab" aria-selected="false" aria-controls="panelAccounts">Cuentas — gráficas</button>
+      <button id="tabFunds" class="tab-btn" role="tab" aria-selected="false" aria-controls="panelFunds">Fondos — histórico</button>
       <button id="tabNetWorth" class="tab-btn" role="tab" aria-selected="false" aria-controls="panelNetWorth">Net Worth</button>
     </div>
 
-    <!-- Panel: Cuentas -->
-    <section id="panelAccounts" class="card" role="tabpanel" aria-labelledby="tabAccounts">
+    <!-- ===== Panel: Agregar registros ===== -->
+    <section id="panelAdd" class="card" role="tabpanel" aria-labelledby="tabAdd">
       <div class="grid">
-        <!-- Formulario de cuenta -->
-        <section aria-labelledby="formTitle">
-          <h2 id="formTitle" style="margin:0 0 10px;font-size:16px">Agregar / Editar cuenta</h2>
-          <form id="accountForm" autocomplete="on" novalidate>
-            <input type="hidden" id="editId" />
-            <div class="row">
-              <div>
-                <label for="name">Nombre de la cuenta</label>
-                <input id="name" name="name" type="text" placeholder="Ej: Ahorros Bancolombia" required />
-                <div class="help">Corto y descriptivo.</div>
+        <!-- Sección 1: Crear nuevas cuentas y fondos -->
+        <section>
+          <h2 class="section-title">Crear nuevas cuentas y fondos</h2>
+
+          <div class="subcard" style="margin-bottom:12px">
+            <h3 style="margin:0 0 8px;font-size:15px">Nueva cuenta (Débito / Crédito)</h3>
+            <form id="formNewAccount" novalidate>
+              <div class="row">
+                <div>
+                  <label for="naName">Nombre</label>
+                  <input id="naName" type="text" placeholder="Ej: Ahorros Bancolombia" />
+                </div>
+                <div>
+                  <label for="naType">Tipo</label>
+                  <select id="naType">
+                    <option value="" selected disabled>Selecciona tipo</option>
+                    <option value="debit">Cuenta débito (activo)</option>
+                    <option value="credit">Tarjeta de crédito (deuda)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="naCreated">Fecha de creación</label>
+                  <input id="naCreated" type="date" />
+                </div>
               </div>
-            </div>
+              <div class="actions" style="margin-top:10px">
+                <button class="primary" type="submit">Crear cuenta</button>
+                <button class="ghost" type="button" id="naClear">Limpiar</button>
+              </div>
+              <div class="help warn" id="errNewAcc" style="display:none;margin-top:8px"></div>
+            </form>
+          </div>
+
+          <div class="subcard">
+            <h3 style="margin:0 0 8px;font-size:15px">Nuevo fondo de inversión</h3>
+            <form id="formNewFund" novalidate>
+              <div class="row">
+                <div>
+                  <label for="nfName">Nombre del fondo</label>
+                  <input id="nfName" type="text" placeholder="Ej: Fondo Renta Fija XYZ" />
+                </div>
+                <div>
+                  <label for="nfCreated">Fecha de creación</label>
+                  <input id="nfCreated" type="date" />
+                </div>
+              </div>
+              <div class="actions" style="margin-top:10px">
+                <button class="primary" type="submit">Crear fondo</button>
+                <button class="ghost" type="button" id="nfClear">Limpiar</button>
+              </div>
+              <div class="help warn" id="errNewFund" style="display:none;margin-top:8px"></div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Sección 2: Agregar entradas a entidades existentes -->
+        <section>
+          <h2 class="section-title">Agregar registros a existentes</h2>
+          <form id="formNewEntry" class="subcard" novalidate>
             <div class="row">
               <div>
-                <label for="type">Tipo</label>
-                <select id="type" name="type" required>
-                  <option value="" disabled selected>Selecciona tipo</option>
-                  <option value="debit">Cuenta débito (activo)</option>
-                  <option value="credit">Tarjeta de crédito (deuda)</option>
+                <label for="entryKind">Tipo de entidad</label>
+                <select id="entryKind">
+                  <option value="account">Cuenta (Débito/Crédito)</option>
+                  <option value="fund">Fondo de inversión</option>
                 </select>
-                <div class="help">Las cuentas débito suman a tus activos. Las tarjetas de crédito suman a tus deudas.</div>
               </div>
               <div>
-                <label for="createdAt">Fecha de creación</label>
-                <input id="createdAt" name="createdAt" type="date" />
-                <div class="help">Usada como referencia del inicio de la cuenta.</div>
+                <label for="entryEntity">Entidad</label>
+                <select id="entryEntity"></select>
               </div>
             </div>
-            <div class="actions" style="margin-top:12px">
-              <button class="primary" type="submit" id="submitBtn">Guardar cuenta</button>
-              <button class="ghost" type="reset" id="resetBtn">Limpiar</button>
-              <button class="danger" type="button" id="deleteAllBtn" title="Eliminar todas las cuentas">Eliminar todo</button>
-            </div>
-            <div class="help warn" id="errorAccount" role="alert" style="display:none;margin-top:8px"></div>
-          </form>
-
-          <div class="spacer"></div>
-
-          <!-- Gestor de entradas por cuenta -->
-          <h3 style="margin:8px 0 8px;font-size:15px">Entradas (saldos por fecha)</h3>
-          <form id="entryForm" class="card" style="padding:12px" novalidate>
             <div class="row">
-              <div>
-                <label for="entryAccount">Cuenta</label>
-                <select id="entryAccount"></select>
-              </div>
               <div>
                 <label for="entryDate">Fecha</label>
                 <input id="entryDate" type="date" />
@@ -173,86 +206,97 @@
               </div>
             </div>
             <div class="actions" style="margin-top:10px">
-              <button class="primary" type="submit">Guardar entrada</button>
-              <button class="ghost" type="button" id="entryClear">Limpiar</button>
+              <button class="primary" type="submit">Guardar registro</button>
+              <button class="ghost" type="button" id="neClear">Limpiar</button>
             </div>
-            <div class="help warn" id="errorEntry" role="alert" style="display:none;margin-top:8px"></div>
+            <div class="help warn" id="errNewEntry" style="display:none;margin-top:8px"></div>
           </form>
 
-          <div class="spacer"></div>
-
-          <!-- Lista de entradas de la cuenta seleccionada + gráfico -->
-          <div id="entrySection" class="card" style="padding:12px">
-            <h3 style="margin:0 0 8px;font-size:15px">Entradas de la cuenta seleccionada</h3>
+          <div id="recentBox" class="card" style="padding:12px;margin-top:12px">
+            <h3 style="margin:0 0 8px;font-size:15px">Últimos registros</h3>
             <div style="overflow:auto; border:1px solid var(--border); border-radius:12px">
-              <table aria-describedby="entryHelp">
+              <table>
                 <thead>
                   <tr>
                     <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Entidad</th>
                     <th>Saldo</th>
-                    <th style="width:120px">Acciones</th>
                   </tr>
                 </thead>
-                <tbody id="entryTableBody"></tbody>
+                <tbody id="recentBody"></tbody>
               </table>
             </div>
-            <div id="entryHelp" class="help" style="margin-top:6px">Registra snapshots de saldo. La serie usa valores carry-forward entre fechas.</div>
-
-            <div class="spacer"></div>
-            <div class="chart-wrap">
-              <canvas id="accountChart" height="180"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <!-- Tabla de cuentas -->
-        <section aria-labelledby="listTitle">
-          <h2 id="listTitle" style="margin:0 0 10px;font-size:16px">Cuentas registradas</h2>
-          <div style="overflow:auto; border:1px solid var(--border); border-radius:12px">
-            <table aria-describedby="tableHelp">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Tipo</th>
-                  <th>Creación</th>
-                  <th>Saldo actual</th>
-                  <th style="width:220px">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="tableBody"></tbody>
-            </table>
-          </div>
-          <div id="tableHelp" class="help" style="margin-top:6px">Los datos se guardan en tu navegador (localStorage). No se envían a servidores.</div>
-
-          <div class="totals" aria-live="polite" aria-atomic="true">
-            <div class="kpi green">
-              <h3>Total Débito (activos)</h3>
-              <div class="value" id="totalDebit">$ 0</div>
-            </div>
-            <div class="kpi blue">
-              <h3>Total Crédito (deudas)</h3>
-              <div class="value" id="totalCredit">$ 0</div>
-            </div>
-            <div class="kpi" style="border-color:rgba(248,223,166,.35)">
-              <h3>Net Worth</h3>
-              <div class="value" id="netWorth">$ 0</div>
-            </div>
+            <div class="help">Muestra los 10 registros más recientes guardados en esta sesión.</div>
           </div>
         </section>
       </div>
     </section>
 
-    <!-- Panel: Net Worth -->
-    <section id="panelNetWorth" class="card" role="tabpanel" aria-labelledby="tabNetWorth" hidden>
-      <h2 style="margin:0 0 10px;font-size:16px">Resumen de Net Worth</h2>
+    <!-- ===== Panel: Cuentas (solo gráficas) ===== -->
+    <section id="panelAccounts" class="card" role="tabpanel" aria-labelledby="tabAccounts" hidden>
+      <h2 class="section-title">Cuentas — gráficas por cuenta</h2>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <label for="selAccount">Cuenta</label>
+          <select id="selAccount"></select>
+        </div>
+      </div>
+      <div class="grid">
+        <section>
+          <div class="chart-wrap">
+            <canvas id="accountChart" height="220"></canvas>
+          </div>
+        </section>
+        <section>
+          <div style="overflow:auto; border:1px solid var(--border); border-radius:12px">
+            <table aria-describedby="accTblHelp">
+              <thead><tr><th>Fecha</th><th>Saldo</th><th style="width:120px">Acciones</th></tr></thead>
+              <tbody id="accEntryTbody"></tbody>
+            </table>
+          </div>
+          <div id="accTblHelp" class="help" style="margin-top:6px">Entradas (snapshots) de la cuenta seleccionada.</div>
+        </section>
+      </div>
+    </section>
 
+    <!-- ===== Panel: Fondos (histórico) ===== -->
+    <section id="panelFunds" class="card" role="tabpanel" aria-labelledby="tabFunds" hidden>
+      <h2 class="section-title">Fondos — histórico de saldos</h2>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <label for="selFund">Fondo</label>
+          <select id="selFund"></select>
+        </div>
+      </div>
+      <div class="grid">
+        <section>
+          <div class="chart-wrap">
+            <canvas id="fundChart" height="220"></canvas>
+          </div>
+        </section>
+        <section>
+          <div style="overflow:auto; border:1px solid var(--border); border-radius:12px">
+            <table aria-describedby="fundTblHelp">
+              <thead><tr><th>Fecha</th><th>Saldo</th><th style="width:120px">Acciones</th></tr></thead>
+              <tbody id="fundEntryTbody"></tbody>
+            </table>
+          </div>
+          <div id="fundTblHelp" class="help" style="margin-top:6px">Entradas (snapshots) del fondo seleccionado.</div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ===== Panel: Net Worth ===== -->
+    <section id="panelNetWorth" class="card" role="tabpanel" aria-labelledby="tabNetWorth" hidden>
+      <h2 class="section-title">Resumen de Net Worth</h2>
       <div class="totals" aria-live="polite" aria-atomic="true">
         <div class="kpi green">
-          <h3>Total Débito (activos)</h3>
-          <div class="value" id="nwTotalDebit">$ 0</div>
+          <h3>Activos (Débito + Fondos)</h3>
+          <div class="value" id="nwTotalAssets">$ 0</div>
         </div>
         <div class="kpi blue">
-          <h3>Total Crédito (deudas)</h3>
+          <h3>Crédito (deudas)</h3>
           <div class="value" id="nwTotalCredit">$ 0</div>
         </div>
         <div class="kpi" style="border-color:rgba(248,223,166,.35)">
@@ -267,16 +311,15 @@
         <section class="chart-wrap" aria-label="Serie temporal Net Worth">
           <h3 style="margin:0 0 8px;font-size:15px">Evolución del Net Worth</h3>
           <canvas id="netWorthChart" height="220"></canvas>
-          <div class="help">Calculado como Total Débito − Total Crédito, con carry-forward entre fechas.</div>
+          <div class="help">Calculado como Activos (Débito + Fondos) − Crédito, con carry-forward entre fechas.</div>
         </section>
 
-        <section class="chart-wrap" aria-label="Proporción Débito vs Crédito">
-          <h3 style="margin:0 0 8px;font-size:15px">Proporción Débito vs Crédito (actual)</h3>
+        <section class="chart-wrap" aria-label="Proporción Activos vs Crédito">
+          <h3 style="margin:0 0 8px;font-size:15px">Proporción Activos vs Crédito (actual)</h3>
           <canvas id="mixChart" height="220"></canvas>
-          <div class="help">Basado en los saldos actuales (últimas entradas de cada cuenta).</div>
+          <div class="help">Activos = Cuentas Débito + Fondos (últimas entradas).</div>
         </section>
       </div>
-      <div class="footer">Tip: agrega entradas periódicas (por ejemplo, fin de mes) para ver mejor la evolución.</div>
     </section>
   </div>
 
@@ -286,16 +329,12 @@
     const CURRENCY = 'COP';
     const fmt = new Intl.NumberFormat(LOCALE, { style:'currency', currency: CURRENCY, maximumFractionDigits: 2 });
 
-    function formatCOP(n){
-      try { return fmt.format(n || 0); }
-      catch { return '$ ' + (Math.round((n||0)*100)/100).toLocaleString(LOCALE); }
-    }
+    function formatCOP(n){ try { return fmt.format(n || 0); } catch { return '$ ' + (Math.round((n||0)*100)/100).toLocaleString(LOCALE); } }
     function parseMonto(raw){
       if (typeof raw === 'number') return raw;
       if (!raw) return NaN;
       let s = String(raw).trim().replace(/\s/g,'');
-      const hasComma = s.includes(',');
-      const hasDot = s.includes('.');
+      const hasComma = s.includes(','), hasDot = s.includes('.');
       if (hasComma && hasDot){ s = s.replace(/\./g,'').replace(',', '.'); }
       else if (hasComma && !hasDot){ s = s.replace(',', '.'); }
       s = s.replace(/[^0-9.\-]/g, '');
@@ -306,101 +345,74 @@
     const toISO = (d) => {
       if (!d) return '';
       if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-      const dt = new Date(d);
-      if (isNaN(dt)) return '';
-      return dt.toISOString().slice(0,10);
+      const dt = new Date(d); if (isNaN(dt)) return ''; return dt.toISOString().slice(0,10);
     };
 
-    // ========= Almacenamiento =========
-    const STORE_V2 = 'finance_accounts_v2'; // nuevo esquema con entradas
-    const STORE_V1 = 'finance_accounts_v1'; // anterior (sin entradas)
+    // ========= Almacenamiento & Migraciones =========
+    const STORE_V3 = 'finance_state_v3'; // { accounts:[], funds:[] }
+    const STORE_V2 = 'finance_accounts_v2'; // array de cuentas (legacy)
+    const STORE_V1 = 'finance_accounts_v1'; // array de cuentas (legacy simple)
 
     function loadState(){
-      // Prioriza V2
-      const rawV2 = localStorage.getItem(STORE_V2);
-      if (rawV2){
+      const raw3 = localStorage.getItem(STORE_V3);
+      if (raw3){
         try {
-          const data = JSON.parse(rawV2);
-          if (Array.isArray(data)) return data;
+          const data = JSON.parse(raw3);
+          if (data && Array.isArray(data.accounts) && Array.isArray(data.funds)) return data;
         } catch(e){}
       }
-      // Migración desde V1 (si existe)
-      const rawV1 = localStorage.getItem(STORE_V1);
-      if (rawV1){
+      // Migrar desde V2
+      const raw2 = localStorage.getItem(STORE_V2);
+      if (raw2){
         try{
-          const arr = JSON.parse(rawV1);
-          if (Array.isArray(arr)){
-            const today = todayISO();
-            const migrated = arr.map(a => ({
+          const accs = JSON.parse(raw2);
+          if (Array.isArray(accs)){
+            const accounts = accs.map(a => ({
               id: a.id || Date.now()+Math.random(),
               name: a.name,
-              type: a.type, // 'debit' | 'credit'
-              createdAt: today,
-              entries: [{ date: today, balance: Number(a.balance)||0 }]
+              type: a.type,
+              createdAt: a.createdAt || todayISO(),
+              entries: Array.isArray(a.entries) ? a.entries : []
             }));
-            // Guarda en V2 y mantiene V1 por si acaso
-            localStorage.setItem(STORE_V2, JSON.stringify(migrated));
-            return migrated;
+            const state = { accounts, funds: [] };
+            localStorage.setItem(STORE_V3, JSON.stringify(state));
+            return state;
           }
         }catch(e){}
       }
-      return [];
+      // Migrar desde V1
+      const raw1 = localStorage.getItem(STORE_V1);
+      if (raw1){
+        try{
+          const arr = JSON.parse(raw1);
+          if (Array.isArray(arr)){
+            const today = todayISO();
+            const accounts = arr.map(a => ({
+              id: a.id || Date.now()+Math.random(),
+              name: a.name,
+              type: a.type,
+              createdAt: today,
+              entries: [{ date: today, balance: Number(a.balance)||0 }]
+            }));
+            const state = { accounts, funds: [] };
+            localStorage.setItem(STORE_V3, JSON.stringify(state));
+            return state;
+          }
+        }catch(e){}
+      }
+      return { accounts: [], funds: [] };
     }
 
-    function saveState(accounts){
-      localStorage.setItem(STORE_V2, JSON.stringify(accounts));
+    function saveState(state){
+      localStorage.setItem(STORE_V3, JSON.stringify(state));
       document.getElementById('lastUpdated').textContent = 'Actualizado: ' + new Date().toLocaleString(LOCALE);
     }
 
-    // ========= Selectores =========
+    // ========= Selección rápida =========
     const $ = (id) => document.getElementById(id);
 
-    // ========= Cálculos =========
-    function sortEntries(entries){
-      return [...entries].sort((a,b) => a.date.localeCompare(b.date));
-    }
-    function currentBalance(acc){
-      if (!acc || !acc.entries || acc.entries.length===0) return 0;
-      const last = sortEntries(acc.entries).at(-1);
-      return last ? (Number(last.balance)||0) : 0;
-    }
-    function computeTotalsNow(accounts){
-      let totalDebit = 0, totalCredit = 0;
-      accounts.forEach(acc => {
-        const bal = currentBalance(acc);
-        if (acc.type === 'debit') totalDebit += bal;
-        else if (acc.type === 'credit') totalCredit += bal;
-      });
-      return { totalDebit, totalCredit, net: totalDebit - totalCredit };
-    }
-
-    /**
-     * Serie agregada por fecha (carry-forward).
-     * 1) Toma todas las fechas donde hubo entradas en cualquier cuenta.
-     * 2) Ordena ascendente.
-     * 3) Para cada fecha, calcula total débito y crédito usando el último saldo conocido de cada cuenta hasta esa fecha.
-     */
-    function buildAggregateSeries(accounts){
-      const dateSet = new Set();
-      accounts.forEach(acc => acc.entries?.forEach(e => dateSet.add(e.date)));
-      const dates = [...dateSet].sort();
-      const accSorted = accounts.map(a => ({...a, entries: sortEntries(a.entries||[]) }));
-
-      const series = dates.map(d => {
-        let totalDebit = 0, totalCredit = 0;
-        accSorted.forEach(acc => {
-          // Busca última entrada <= d
-          const bal = lastBalanceUpTo(acc.entries, d);
-          if (bal != null){
-            if (acc.type === 'debit') totalDebit += bal;
-            else totalCredit += bal;
-          }
-        });
-        return { date: d, totalDebit, totalCredit, net: totalDebit - totalCredit };
-      });
-      return series;
-    }
-
+    // ========= Utilidades de entradas =========
+    function sortEntries(entries){ return [...(entries||[])].sort((a,b) => a.date.localeCompare(b.date)); }
     function lastBalanceUpTo(entries, dateISO){
       if (!entries || entries.length===0) return 0;
       let last = null;
@@ -410,166 +422,170 @@
       }
       return last==null ? 0 : Number(last)||0;
     }
-
-    // ========= Render de UI =========
-    let state = loadState();
-
-    function refreshAll(){
-      renderAccountSelect();
-      renderAccountsTable();
-      renderEntryListAndChart();
-      renderTotals();
-      renderNetWorthPanel();
+    function currentBalance(item){
+      const e = sortEntries(item.entries||[]).at(-1);
+      return e ? (Number(e.balance)||0) : 0;
     }
 
-    function renderTotals(){
-      const { totalDebit, totalCredit, net } = computeTotalsNow(state);
-      $('totalDebit').textContent  = formatCOP(totalDebit);
-      $('totalCredit').textContent = formatCOP(totalCredit);
-      $('netWorth').textContent    = formatCOP(net);
-      // NW panel KPIs
-      $('nwTotalDebit').textContent  = formatCOP(totalDebit);
-      $('nwTotalCredit').textContent = formatCOP(totalCredit);
-      $('nwNetWorth').textContent    = formatCOP(net);
-    }
-
-    function renderAccountSelect(selectedId){
-      const sel = $('entryAccount');
-      const opts = state.map(a => ({ id:a.id, label:`${a.name} — ${a.type==='debit'?'Débito':'Crédito'}` }));
-      sel.innerHTML = '';
-      if (opts.length===0){
-        const o = document.createElement('option');
-        o.value = ''; o.textContent = '— No hay cuentas —';
-        sel.appendChild(o);
-        return;
-      }
-      opts.forEach(o => {
-        const el = document.createElement('option');
-        el.value = o.id; el.textContent = o.label;
-        sel.appendChild(el);
+    // ========= Cálculos Net Worth (ahora incluye fondos como activos) =========
+    function computeTotalsNow(state){
+      let totalDebitAccounts = 0, totalCredit = 0, totalFunds = 0;
+      state.accounts.forEach(acc => {
+        const bal = currentBalance(acc);
+        if (acc.type === 'debit') totalDebitAccounts += bal;
+        else if (acc.type === 'credit') totalCredit += bal;
       });
-      if (selectedId){
-        sel.value = String(selectedId);
-      } else if (!sel.value){
-        sel.value = String(opts[0].id);
-      }
+      state.funds.forEach(f => { totalFunds += currentBalance(f); });
+      const totalAssets = totalDebitAccounts + totalFunds;
+      const net = totalAssets - totalCredit;
+      return { totalAssets, totalDebitAccounts, totalFunds, totalCredit, net };
     }
 
-    function renderAccountsTable(){
-      const tbody = $('tableBody');
-      tbody.innerHTML = '';
-      state.forEach(acc => {
-        const tr = document.createElement('tr');
+    /**
+     * Serie agregada por fecha (carry-forward) incluyendo fondos:
+     * - Toma todas las fechas con entradas en cuentas **o** fondos.
+     * - Para cada fecha, activos = (débito cuentas) + (fondos), pasivos = crédito cuentas.
+     */
+    function buildAggregateSeries(state){
+      const dateSet = new Set();
+      state.accounts.forEach(acc => acc.entries?.forEach(e => dateSet.add(e.date)));
+      state.funds.forEach(f => f.entries?.forEach(e => dateSet.add(e.date)));
+      const dates = [...dateSet].sort();
 
-        const tdName = document.createElement('td'); tdName.textContent = acc.name;
-        const tdType = document.createElement('td');
-        const badge = document.createElement('span');
-        badge.className = 'badge ' + (acc.type === 'debit' ? 'debit' : 'credit');
-        badge.textContent = acc.type === 'debit' ? 'Débito' : 'Crédito';
-        tdType.appendChild(badge);
+      const accSorted = state.accounts.map(a => ({...a, entries: sortEntries(a.entries||[]) }));
+      const fundSorted = state.funds.map(f => ({...f, entries: sortEntries(f.entries||[]) }));
 
-        const tdCreated = document.createElement('td');
-        tdCreated.textContent = acc.createdAt || '';
-
-        const tdBal = document.createElement('td');
-        tdBal.textContent = formatCOP(currentBalance(acc));
-
-        const tdAct = document.createElement('td');
-        const btnEdit = document.createElement('button');
-        btnEdit.textContent = 'Editar';
-        btnEdit.className = 'ghost';
-        btnEdit.addEventListener('click', () => startEditAccount(acc.id));
-
-        const btnEntries = document.createElement('button');
-        btnEntries.textContent = 'Gestionar entradas';
-        btnEntries.addEventListener('click', () => {
-          $('entryAccount').value = String(acc.id);
-          renderEntryListAndChart();
-          // cambia a pestaña de cuentas (por si estabas en NW)
-          activateTab('accounts');
+      const series = dates.map(d => {
+        let debitAcc = 0, creditAcc = 0, funds = 0;
+        accSorted.forEach(acc => {
+          const bal = lastBalanceUpTo(acc.entries, d);
+          if (acc.type === 'debit') debitAcc += bal; else creditAcc += bal;
         });
+        fundSorted.forEach(f => { funds += lastBalanceUpTo(f.entries, d); });
+        const assets = debitAcc + funds;
+        return { date: d, assets, credit: creditAcc, net: assets - creditAcc };
+      });
+      return series;
+    }
 
-        const btnDel = document.createElement('button');
-        btnDel.textContent = 'Eliminar';
-        btnDel.className = 'danger';
-        btnDel.addEventListener('click', () => removeAccount(acc.id));
+    // ========= Estado =========
+    let state = loadState();
+    let recentEntries = []; // lista de "Últimos registros"
 
-        tdAct.appendChild(btnEdit);
-        tdAct.appendChild(document.createTextNode(' '));
-        tdAct.appendChild(btnEntries);
-        tdAct.appendChild(document.createTextNode(' '));
-        tdAct.appendChild(btnDel);
+    // ========= Render helpers =========
+    function refreshAll(){
+      populateEntryEntitySelect();          // panel Agregar registros
+      renderRecentEntries();                // panel Agregar registros
+      populateAccountsDropdown();           // panel Cuentas
+      populateFundsDropdown();              // panel Fondos
+      renderAccountView();                  // panel Cuentas
+      renderFundView();                     // panel Fondos
+      renderNetWorthPanel();                // panel Net Worth
+    }
 
-        tr.appendChild(tdName);
-        tr.appendChild(tdType);
-        tr.appendChild(tdCreated);
-        tr.appendChild(tdBal);
-        tr.appendChild(tdAct);
+    // ----- Panel Agregar registros -----
+    function populateEntryEntitySelect(){
+      const kind = $('entryKind').value;
+      const sel = $('entryEntity');
+      sel.innerHTML = '';
+      if (kind === 'fund'){
+        if (state.funds.length===0){
+          const o = document.createElement('option'); o.value=''; o.textContent='— No hay fondos —'; sel.appendChild(o);
+        } else {
+          state.funds.forEach(f => {
+            const o = document.createElement('option'); o.value = String(f.id); o.textContent = `${f.name}`;
+            sel.appendChild(o);
+          });
+        }
+      } else {
+        if (state.accounts.length===0){
+          const o = document.createElement('option'); o.value=''; o.textContent='— No hay cuentas —'; sel.appendChild(o);
+        } else {
+          state.accounts.forEach(a => {
+            const o = document.createElement('option'); o.value = String(a.id);
+            o.textContent = `${a.name} — ${a.type==='debit'?'Débito':'Crédito'}`;
+            sel.appendChild(o);
+          });
+        }
+      }
+    }
+    function renderRecentEntries(){
+      const tbody = $('recentBody'); if (!tbody) return;
+      tbody.innerHTML = '';
+      const rows = [...recentEntries].slice(-10).reverse();
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.date}</td><td>${r.kind==='fund'?'Fondo':'Cuenta'}</td><td>${r.name}</td><td>${formatCOP(r.balance)}</td>`;
         tbody.appendChild(tr);
       });
     }
 
-    function startEditAccount(id){
-      const acc = state.find(a => a.id === id);
-      if (!acc) return;
-      $('editId').value = String(acc.id);
-      $('name').value = acc.name;
-      $('type').value = acc.type;
-      $('createdAt').value = acc.createdAt || '';
-      $('submitBtn').textContent = 'Actualizar cuenta';
-      $('formTitle').textContent = 'Editar cuenta';
+    // ----- Panel Cuentas (gráficas) -----
+    function populateAccountsDropdown(selectedId){
+      const sel = $('selAccount'); if (!sel) return;
+      sel.innerHTML = '';
+      if (state.accounts.length===0){
+        const o = document.createElement('option'); o.value=''; o.textContent='— No hay cuentas —'; sel.appendChild(o);
+        return;
+      }
+      state.accounts.forEach(a => {
+        const o = document.createElement('option'); o.value = String(a.id); o.textContent = `${a.name} (${a.type==='debit'?'Débito':'Crédito'})`;
+        sel.appendChild(o);
+      });
+      if (selectedId){ sel.value = String(selectedId); }
+      else if (!sel.value){ sel.value = String(state.accounts[0].id); }
     }
 
-    function clearAccountForm(){
-      $('accountForm').reset();
-      $('editId').value = '';
-      $('submitBtn').textContent = 'Guardar cuenta';
-      $('formTitle').textContent = 'Agregar / Editar cuenta';
-      const err = $('errorAccount'); err.style.display='none'; err.textContent='';
+    // ----- Panel Fondos (histórico) -----
+    function populateFundsDropdown(selectedId){
+      const sel = $('selFund'); if (!sel) return;
+      sel.innerHTML = '';
+      if (state.funds.length===0){
+        const o = document.createElement('option'); o.value=''; o.textContent='— No hay fondos —'; sel.appendChild(o);
+        return;
+      }
+      state.funds.forEach(f => {
+        const o = document.createElement('option'); o.value = String(f.id); o.textContent = f.name;
+        sel.appendChild(o);
+      });
+      if (selectedId){ sel.value = String(selectedId); }
+      else if (!sel.value && state.funds[0]){ sel.value = String(state.funds[0].id); }
     }
 
-    // ========= Entradas =========
-    let accountChart = null;
+    // ========= Gráficas =========
+    let accountChart = null, fundChart = null, netWorthChart = null, mixChart = null;
 
-    function renderEntryListAndChart(){
-      const selId = $('entryAccount').value;
-      const acc = state.find(a => String(a.id) === String(selId));
-      const tbody = $('entryTableBody');
-      tbody.innerHTML = '';
-
+    function renderAccountView(){
+      const sel = $('selAccount'); if (!sel) return;
+      const acc = state.accounts.find(a => String(a.id) === String(sel.value));
+      const tbody = $('accEntryTbody');
+      if (tbody) tbody.innerHTML = '';
       if (!acc){
-        // limpia gráfico
         if (accountChart){ accountChart.destroy(); accountChart = null; }
         return;
       }
       const entries = sortEntries(acc.entries||[]);
-
-      entries.forEach((e, idx) => {
+      // Tabla
+      entries.forEach(e => {
         const tr = document.createElement('tr');
         const tdD = document.createElement('td'); tdD.textContent = e.date;
         const tdB = document.createElement('td'); tdB.textContent = formatCOP(e.balance);
         const tdA = document.createElement('td');
-
         const btnDel = document.createElement('button');
         btnDel.textContent = 'Eliminar';
         btnDel.className = 'danger';
         btnDel.addEventListener('click', () => {
-          // eliminar entrada por índice (única por fecha: si hay duplicadas, elimina solo esta)
-          acc.entries.splice(idx,1);
-          saveState(state);
-          refreshAll();
-          $('entryAccount').value = String(acc.id);
+          const idx = acc.entries.findIndex(x => x.date === e.date && x.balance === e.balance);
+          if (idx >= 0){ acc.entries.splice(idx,1); saveState(state); renderAccountView(); renderNetWorthPanel(); }
         });
-
         tdA.appendChild(btnDel);
         tr.appendChild(tdD); tr.appendChild(tdB); tr.appendChild(tdA);
         tbody.appendChild(tr);
       });
-
-      // Gráfico por cuenta
+      // Gráfico
       const ctx = $('accountChart').getContext('2d');
       const dataPoints = entries.map(e => ({ x: e.date, y: e.balance }));
-      if (accountChart){ accountChart.destroy(); }
+      if (accountChart) accountChart.destroy();
       accountChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -578,9 +594,7 @@
             data: dataPoints,
             borderColor: acc.type==='debit' ? '#22c55e' : '#60a5fa',
             backgroundColor: acc.type==='debit' ? 'rgba(34,197,94,.18)' : 'rgba(96,165,250,.18)',
-            tension: .2,
-            pointRadius: 3,
-            fill: true
+            tension: .2, pointRadius: 3, fill: true
           }]
         },
         options: {
@@ -591,63 +605,89 @@
           },
           plugins: {
             legend: { labels:{ color:'#e5e7eb' } },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `${formatCOP(ctx.parsed.y)}`
-              }
-            }
+            tooltip: { callbacks: { label: (ctx) => `${formatCOP(ctx.parsed.y)}` } }
           }
         }
       });
     }
 
-    // ========= Gráficos Net Worth =========
-    let netWorthChart = null;
-    let mixChart = null;
+    function renderFundView(){
+      const sel = $('selFund'); if (!sel) return;
+      const fund = state.funds.find(f => String(f.id) === String(sel.value));
+      const tbody = $('fundEntryTbody');
+      if (tbody) tbody.innerHTML = '';
+      if (!fund){
+        if (fundChart){ fundChart.destroy(); fundChart = null; }
+        return;
+      }
+      const entries = sortEntries(fund.entries||[]);
+      // Tabla
+      entries.forEach(e => {
+        const tr = document.createElement('tr');
+        const tdD = document.createElement('td'); tdD.textContent = e.date;
+        const tdB = document.createElement('td'); tdB.textContent = formatCOP(e.balance);
+        const tdA = document.createElement('td');
+        const btnDel = document.createElement('button');
+        btnDel.textContent = 'Eliminar';
+        btnDel.className = 'danger';
+        btnDel.addEventListener('click', () => {
+          const idx = fund.entries.findIndex(x => x.date === e.date && x.balance === e.balance);
+          if (idx >= 0){ fund.entries.splice(idx,1); saveState(state); renderFundView(); renderNetWorthPanel(); }
+        });
+        tdA.appendChild(btnDel);
+        tr.appendChild(tdD); tr.appendChild(tdB); tr.appendChild(tdA);
+        tbody.appendChild(tr);
+      });
+      // Gráfico
+      const ctx = $('fundChart').getContext('2d');
+      const dataPoints = entries.map(e => ({ x: e.date, y: e.balance }));
+      if (fundChart) fundChart.destroy();
+      fundChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: `${fund.name} (Fondo)`,
+            data: dataPoints,
+            borderColor: '#f8dfa6',
+            backgroundColor: 'rgba(248,223,166,.18)',
+            tension: .2, pointRadius: 3, fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { type:'time', time:{ unit:'day' }, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' } },
+            y: { beginAtZero: true, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
+          },
+          plugins: {
+            legend: { labels:{ color:'#e5e7eb' } },
+            tooltip: { callbacks: { label: (ctx) => `${formatCOP(ctx.parsed.y)}` } }
+          }
+        }
+      });
+    }
 
     function renderNetWorthPanel(){
-      // Serie histórica agregada
+      const { totalAssets, totalCredit, net } = computeTotalsNow(state);
+      $('nwTotalAssets').textContent  = formatCOP(totalAssets);
+      $('nwTotalCredit').textContent  = formatCOP(totalCredit);
+      $('nwNetWorth').textContent     = formatCOP(net);
+
+      // Serie histórica agregada (con fondos)
       const series = buildAggregateSeries(state);
       const ctxNW = $('netWorthChart').getContext('2d');
       const pointsNet = series.map(p => ({ x: p.date, y: p.net }));
-      const pointsDebit = series.map(p => ({ x: p.date, y: p.totalDebit }));
-      const pointsCredit = series.map(p => ({ x: p.date, y: p.totalCredit }));
+      const pointsAssets = series.map(p => ({ x: p.date, y: p.assets }));
+      const pointsCredit = series.map(p => ({ x: p.date, y: p.credit }));
 
-      if (netWorthChart) { netWorthChart.destroy(); }
+      if (netWorthChart) netWorthChart.destroy();
       netWorthChart = new Chart(ctxNW, {
         type:'line',
         data:{
           datasets:[
-            {
-              label:'Net Worth',
-              data: pointsNet,
-              borderColor:'#f8dfa6',
-              backgroundColor:'rgba(248,223,166,.18)',
-              tension:.2,
-              pointRadius:0,
-              fill: true,
-              borderWidth:2
-            },
-            {
-              label:'Total Débito',
-              data: pointsDebit,
-              borderColor:'#22c55e',
-              backgroundColor:'rgba(34,197,94,.10)',
-              tension:.2,
-              pointRadius:0,
-              fill:false,
-              borderDash:[5,4]
-            },
-            {
-              label:'Total Crédito',
-              data: pointsCredit,
-              borderColor:'#60a5fa',
-              backgroundColor:'rgba(96,165,250,.10)',
-              tension:.2,
-              pointRadius:0,
-              fill:false,
-              borderDash:[5,4]
-            }
+            { label:'Net Worth', data: pointsNet, borderColor:'#f8dfa6', backgroundColor:'rgba(248,223,166,.18)', tension:.2, pointRadius:0, fill:true, borderWidth:2 },
+            { label:'Activos (Débito + Fondos)', data: pointsAssets, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.10)', tension:.2, pointRadius:0, fill:false, borderDash:[5,4] },
+            { label:'Crédito', data: pointsCredit, borderColor:'#60a5fa', backgroundColor:'rgba(96,165,250,.10)', tension:.2, pointRadius:0, fill:false, borderDash:[5,4] }
           ]
         },
         options:{
@@ -663,150 +703,151 @@
         }
       });
 
-      // Dona Débito vs Crédito (estado actual)
-      const { totalDebit, totalCredit } = computeTotalsNow(state);
+      // Dona Activos vs Crédito (estado actual)
       const ctxMix = $('mixChart').getContext('2d');
-      if (mixChart) { mixChart.destroy(); }
+      if (mixChart) mixChart.destroy();
       mixChart = new Chart(ctxMix, {
         type: 'doughnut',
         data: {
-          labels: ['Débito (activos)', 'Crédito (deudas)'],
+          labels: ['Activos (Débito + Fondos)', 'Crédito (deudas)'],
           datasets: [{
-            data: [totalDebit, totalCredit],
+            data: [totalAssets, totalCredit],
             backgroundColor: ['rgba(34,197,94,.7)', 'rgba(96,165,250,.7)'],
-            borderColor: ['#22c55e', '#60a5fa'],
-            borderWidth: 1
+            borderColor: ['#22c55e', '#60a5fa'], borderWidth: 1
           }]
         },
         options: {
           plugins: {
             legend: { labels:{ color:'#e5e7eb' } },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `${ctx.label}: ${formatCOP(ctx.parsed)}`
-              }
-            }
+            tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${formatCOP(ctx.parsed)}` } }
           }
         }
       });
     }
 
-    // ========= Eventos =========
-    $('type').addEventListener('change', () => {});
-    $('deleteAllBtn').addEventListener('click', () => {
-      if (!confirm('¿Eliminar TODAS las cuentas y entradas? Esta acción es irreversible.')) return;
-      state = [];
-      saveState(state);
-      refreshAll();
-      clearAccountForm();
-      $('entryTableBody').innerHTML = '';
-      if (accountChart){ accountChart.destroy(); accountChart=null; }
-      if (netWorthChart){ netWorthChart.destroy(); netWorthChart=null; }
-      if (mixChart){ mixChart.destroy(); mixChart=null; }
-    });
-    $('resetBtn').addEventListener('click', (e) => {
+    // ========= Eventos: Tabs =========
+    function activateTab(which){
+      const isAdd = which==='add', isAcc = which==='acc', isFund = which==='fund', isNW = which==='nw';
+      $('tabAdd').classList.toggle('active', isAdd);
+      $('tabAccounts').classList.toggle('active', isAcc);
+      $('tabFunds').classList.toggle('active', isFund);
+      $('tabNetWorth').classList.toggle('active', isNW);
+
+      $('panelAdd').hidden = !isAdd;
+      $('panelAccounts').hidden = !isAcc;
+      $('panelFunds').hidden = !isFund;
+      $('panelNetWorth').hidden = !isNW;
+
+      $('tabAdd').setAttribute('aria-selected', String(isAdd));
+      $('tabAccounts').setAttribute('aria-selected', String(isAcc));
+      $('tabFunds').setAttribute('aria-selected', String(isFund));
+      $('tabNetWorth').setAttribute('aria-selected', String(isNW));
+
+      // Refresh al entrar a vistas con charts
+      if (isAcc) renderAccountView();
+      if (isFund) renderFundView();
+      if (isNW) renderNetWorthPanel();
+    }
+    $('tabAdd').addEventListener('click', () => activateTab('add'));
+    $('tabAccounts').addEventListener('click', () => activateTab('acc'));
+    $('tabFunds').addEventListener('click', () => activateTab('fund'));
+    $('tabNetWorth').addEventListener('click', () => activateTab('nw'));
+
+    // ========= Eventos: Crear nuevas entidades =========
+    $('naClear').addEventListener('click', () => { $('naName').value=''; $('naType').value=''; $('naCreated').value=todayISO(); $('errNewAcc').style.display='none'; });
+    $('nfClear').addEventListener('click', () => { $('nfName').value=''; $('nfCreated').value=todayISO(); $('errNewFund').style.display='none'; });
+
+    $('formNewAccount').addEventListener('submit', (e) => {
       e.preventDefault();
-      clearAccountForm();
-    });
-
-    $('accountForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const err = $('errorAccount'); err.style.display='none'; err.textContent='';
-
-      const idEdit = $('editId').value.trim();
-      const name = $('name').value.trim();
-      const type = $('type').value;
-      const createdAt = toISO($('createdAt').value) || todayISO();
-
+      const err = $('errNewAcc'); err.style.display='none'; err.textContent='';
+      const name = $('naName').value.trim();
+      const type = $('naType').value;
+      const createdAt = toISO($('naCreated').value) || todayISO();
       if (!name){ err.style.display='block'; err.textContent='Ingresa un nombre de cuenta.'; return; }
       if (!type){ err.style.display='block'; err.textContent='Selecciona el tipo de cuenta.'; return; }
-
-      if (idEdit){
-        const idx = state.findIndex(a => String(a.id) === idEdit);
-        if (idx !== -1){
-          state[idx] = { ...state[idx], name, type, createdAt };
-        }
-      } else {
-        const newAcc = { id: Date.now(), name, type, createdAt, entries: [] };
-        state.push(newAcc);
-      }
+      const newAcc = { id: Date.now()+Math.random(), name, type, createdAt, entries: [] };
+      state.accounts.push(newAcc);
       saveState(state);
-      refreshAll();
-      clearAccountForm();
+      $('naName').value=''; $('naType').value=''; $('naCreated').value=todayISO();
+      populateEntryEntitySelect(); populateAccountsDropdown(newAcc.id);
+      renderNetWorthPanel();
     });
 
-    // Entradas
-    $('entryClear').addEventListener('click', () => {
-      $('entryDate').value = '';
-      $('entryBalance').value = '';
-    });
-
-    $('entryForm').addEventListener('submit', (e) => {
+    $('formNewFund').addEventListener('submit', (e) => {
       e.preventDefault();
-      const err = $('errorEntry'); err.style.display='none'; err.textContent='';
-      const accId = $('entryAccount').value;
-      const date = toISO($('entryDate').value) || todayISO();
-      const balRaw = $('entryBalance').value;
-      const balance = parseMonto(balRaw);
+      const err = $('errNewFund'); err.style.display='none'; err.textContent='';
+      const name = $('nfName').value.trim();
+      const createdAt = toISO($('nfCreated').value) || todayISO();
+      if (!name){ err.style.display='block'; err.textContent='Ingresa un nombre de fondo.'; return; }
+      const newFund = { id: Date.now()+Math.random(), name, createdAt, entries: [] };
+      state.funds.push(newFund);
+      saveState(state);
+      $('nfName').value=''; $('nfCreated').value=todayISO();
+      populateEntryEntitySelect(); populateFundsDropdown(newFund.id);
+      renderNetWorthPanel();
+    });
 
-      if (!accId){ err.style.display='block'; err.textContent='Selecciona una cuenta.'; return; }
-      if (!Number.isFinite(balance) || balance < 0){
+    // ========= Eventos: Agregar registro =========
+    $('entryKind').addEventListener('change', populateEntryEntitySelect);
+    $('neClear').addEventListener('click', () => { $('entryDate').value=''; $('entryBalance').value=''; $('errNewEntry').style.display='none'; });
+
+    $('formNewEntry').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const err = $('errNewEntry'); err.style.display='none'; err.textContent='';
+      const kind = $('entryKind').value; // 'account' | 'fund'
+      const id = $('entryEntity').value;
+      const date = toISO($('entryDate').value) || todayISO();
+      const bal = parseMonto($('entryBalance').value);
+      if (!id){ err.style.display='block'; err.textContent='Selecciona la entidad.'; return; }
+      if (!Number.isFinite(bal) || bal < 0){
         err.style.display='block'; err.innerHTML = 'Ingresa un saldo válido (número ≥ 0).<br/>Ej: 1200000, 1,200,000.50 o 1.200.000';
         return;
       }
 
-      const acc = state.find(a => String(a.id) === String(accId));
-      if (!acc){ err.style.display='block'; err.textContent='Cuenta no encontrada.'; return; }
-      acc.entries = acc.entries || [];
-      // Reemplaza entrada si ya existe para esa fecha (snapshot por fecha)
-      const idx = acc.entries.findIndex(e => e.date === date);
-      if (idx >= 0) acc.entries[idx].balance = balance;
-      else acc.entries.push({ date, balance });
-
-      // Ordena entradas
-      acc.entries = sortEntries(acc.entries);
+      if (kind === 'fund'){
+        const f = state.funds.find(x => String(x.id) === String(id));
+        if (!f){ err.style.display='block'; err.textContent='Fondo no encontrado.'; return; }
+        f.entries = f.entries||[];
+        const idx = f.entries.findIndex(e => e.date === date);
+        if (idx >= 0) f.entries[idx].balance = bal; else f.entries.push({ date, balance: bal });
+        f.entries = sortEntries(f.entries);
+        recentEntries.push({ date, kind:'fund', name:f.name, balance: bal });
+      } else {
+        const a = state.accounts.find(x => String(x.id) === String(id));
+        if (!a){ err.style.display='block'; err.textContent='Cuenta no encontrada.'; return; }
+        a.entries = a.entries||[];
+        const idx = a.entries.findIndex(e => e.date === date);
+        if (idx >= 0) a.entries[idx].balance = bal; else a.entries.push({ date, balance: bal });
+        a.entries = sortEntries(a.entries);
+        recentEntries.push({ date, kind:'account', name:a.name, balance: bal });
+      }
 
       saveState(state);
-      refreshAll();
-      $('entryAccount').value = String(acc.id);
-      $('entryDate').value = '';
-      $('entryBalance').value = '';
+      renderRecentEntries();
+      renderNetWorthPanel(); // actualizar Net Worth con el nuevo registro
+      $('entryDate').value=''; $('entryBalance').value=''; // limpiar
     });
 
-    function removeAccount(id){
-      const acc = state.find(a => a.id === id);
-      const name = acc ? acc.name : 'esta cuenta';
-      if (!confirm(`¿Eliminar "${name}" y todas sus entradas?`)) return;
-      state = state.filter(a => a.id !== id);
-      saveState(state);
-      refreshAll();
-    }
-
-    // ========= Tabs =========
-    function activateTab(which){
-      const isAccounts = which === 'accounts';
-      $('tabAccounts').classList.toggle('active', isAccounts);
-      $('tabNetWorth').classList.toggle('active', !isAccounts);
-      $('panelAccounts').hidden = !isAccounts;
-      $('panelNetWorth').hidden = isAccounts;
-      $('tabAccounts').setAttribute('aria-selected', String(isAccounts));
-      $('tabNetWorth').setAttribute('aria-selected', String(!isAccounts));
-      if (!isAccounts){
-        // Asegura refresco de gráficos al mostrar
-        renderNetWorthPanel();
-      }
-    }
-    $('tabAccounts').addEventListener('click', () => activateTab('accounts'));
-    $('tabNetWorth').addEventListener('click', () => activateTab('nw'));
+    // ========= Eventos: Selects de vistas =========
+    $('selAccount').addEventListener('change', () => renderAccountView());
+    $('selFund').addEventListener('change', () => renderFundView());
 
     // ========= Init =========
     (function init(){
-      if (localStorage.getItem(STORE_V2)) {
+      if (localStorage.getItem(STORE_V3)) {
         $('lastUpdated').textContent = 'Actualizado: ' + new Date().toLocaleString(LOCALE);
       }
-      // Init createdAt default
-      $('createdAt').value = todayISO();
-      renderAccountSelect();
+      // Defaults de fechas
+      $('naCreated').value = todayISO();
+      $('nfCreated').value = todayISO();
+      $('entryDate').value = todayISO();
+
+      // Inicializar selects
+      populateEntryEntitySelect();
+      populateAccountsDropdown();
+      populateFundsDropdown();
+
+      // Render inicial
       refreshAll();
     })();
   </script>
