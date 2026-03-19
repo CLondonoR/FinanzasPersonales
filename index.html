@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finanzas — Registros, Cuentas (Gráficas), Fondos y Net Worth</title>
-  <meta name="description" content="App para registrar cuentas y fondos con entradas por fecha, ver gráficas por entidad y evolución del Net Worth." />
+  <meta name="description" content="App para registrar cuentas y fondos con entradas por fecha, ver gráficas por entidad y evolución del Net Worth. Ejes automáticos y dona por fecha." />
 
   <!-- Chart.js + date adapter (requiere Internet) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
@@ -100,6 +100,8 @@
     .chart-wrap{ padding:10px; border:1px solid var(--border); border-radius:12px; background:#0b1020 }
     .section-title{ margin:0 0 8px; font-size:16px }
     .subcard{ border:1px dashed var(--border); border-radius:12px; padding:12px; background:rgba(0,0,0,.05) }
+    .inline{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    .small{ font-size:12px; color:var(--muted) }
   </style>
 </head>
 <body>
@@ -107,7 +109,7 @@
     <header>
       <div>
         <h1>Finanzas — Registros, Cuentas (Gráficas), Fondos y Net Worth</h1>
-        <div class="subtitle">Agrega cuentas y fondos, registra saldos por fecha y visualiza su evolución. Net Worth = Activos (Débito + Fondos) − Crédito.</div>
+        <div class="subtitle">Net Worth = Activos (Débito + Fondos) − Crédito. Ejes auto-ajustados y dona por fecha.</div>
       </div>
       <div class="muted" id="lastUpdated" aria-live="polite"></div>
     </header>
@@ -315,9 +317,15 @@
         </section>
 
         <section class="chart-wrap" aria-label="Proporción Activos vs Crédito">
-          <h3 style="margin:0 0 8px;font-size:15px">Proporción Activos vs Crédito (actual)</h3>
+          <div class="inline" style="justify-content:space-between">
+            <h3 style="margin:0 0 8px;font-size:15px">Proporción Activos vs Crédito</h3>
+            <label class="small" for="mixDate">Fecha</label>
+          </div>
+          <div class="inline" style="margin-bottom:8px">
+            <input id="mixDate" type="date" />
+            <span class="small">La dona usa los saldos vigentes a la fecha seleccionada.</span>
+          </div>
           <canvas id="mixChart" height="220"></canvas>
-          <div class="help">Activos = Cuentas Débito + Fondos (últimas entradas).</div>
         </section>
       </div>
     </section>
@@ -408,10 +416,8 @@
       document.getElementById('lastUpdated').textContent = 'Actualizado: ' + new Date().toLocaleString(LOCALE);
     }
 
-    // ========= Selección rápida =========
+    // ========= Utilities =========
     const $ = (id) => document.getElementById(id);
-
-    // ========= Utilidades de entradas =========
     function sortEntries(entries){ return [...(entries||[])].sort((a,b) => a.date.localeCompare(b.date)); }
     function lastBalanceUpTo(entries, dateISO){
       if (!entries || entries.length===0) return 0;
@@ -427,7 +433,36 @@
       return e ? (Number(e.balance)||0) : 0;
     }
 
-    // ========= Cálculos Net Worth (ahora incluye fondos como activos) =========
+    // --- Bounds helpers (auto‑ajuste y centrado) ---
+    function computeYBounds(values){
+      const nums = values.filter(v => Number.isFinite(v));
+      if (nums.length === 0) return { yMin: 0, yMax: 1 };
+      let min = Math.min(...nums), max = Math.max(...nums);
+      if (min === max){
+        const pad = Math.max(Math.abs(min) * 0.1, 1);
+        return { yMin: min - pad, yMax: max + pad };
+      }
+      const pad = (max - min) * 0.1; // 10% padding
+      return { yMin: Math.max(0, min - pad), yMax: max + pad * 1.1 };
+    }
+    function computeXBounds(dateStrings){
+      const times = dateStrings
+        .map(d => new Date(d).getTime())
+        .filter(t => Number.isFinite(t));
+      if (times.length === 0){
+        const now = Date.now();
+        return { xMin: now - 3*86400000, xMax: now + 3*86400000 };
+      }
+      let min = Math.min(...times), max = Math.max(...times);
+      if (min === max){
+        const pad = 3*86400000; // ±3 días
+        return { xMin: min - pad, xMax: max + pad };
+      }
+      const pad = Math.max((max - min) * 0.03, 86400000); // 3% o 1 día
+      return { xMin: min - pad, xMax: max + pad };
+    }
+
+    // ========= Cálculos Net Worth (incluye fondos como activos) =========
     function computeTotalsNow(state){
       let totalDebitAccounts = 0, totalCredit = 0, totalFunds = 0;
       state.accounts.forEach(acc => {
@@ -441,11 +476,17 @@
       return { totalAssets, totalDebitAccounts, totalFunds, totalCredit, net };
     }
 
-    /**
-     * Serie agregada por fecha (carry-forward) incluyendo fondos:
-     * - Toma todas las fechas con entradas en cuentas **o** fondos.
-     * - Para cada fecha, activos = (débito cuentas) + (fondos), pasivos = crédito cuentas.
-     */
+    function computeTotalsAtDate(state, dateISO){
+      let debit = 0, credit = 0, funds = 0;
+      const date = toISO(dateISO) || todayISO();
+      state.accounts.forEach(acc => {
+        const bal = lastBalanceUpTo(sortEntries(acc.entries||[]), date);
+        if (acc.type === 'debit') debit += bal; else credit += bal;
+      });
+      state.funds.forEach(f => { funds += lastBalanceUpTo(sortEntries(f.entries||[]), date); });
+      return { assets: debit + funds, credit, debit, funds, net: debit + funds - credit };
+    }
+
     function buildAggregateSeries(state){
       const dateSet = new Set();
       state.accounts.forEach(acc => acc.entries?.forEach(e => dateSet.add(e.date)));
@@ -470,17 +511,17 @@
 
     // ========= Estado =========
     let state = loadState();
-    let recentEntries = []; // lista de "Últimos registros"
+    let recentEntries = [];
 
     // ========= Render helpers =========
     function refreshAll(){
-      populateEntryEntitySelect();          // panel Agregar registros
-      renderRecentEntries();                // panel Agregar registros
-      populateAccountsDropdown();           // panel Cuentas
-      populateFundsDropdown();              // panel Fondos
-      renderAccountView();                  // panel Cuentas
-      renderFundView();                     // panel Fondos
-      renderNetWorthPanel();                // panel Net Worth
+      populateEntryEntitySelect();
+      renderRecentEntries();
+      populateAccountsDropdown();
+      populateFundsDropdown();
+      renderAccountView();
+      renderFundView();
+      renderNetWorthPanel();
     }
 
     // ----- Panel Agregar registros -----
@@ -582,16 +623,21 @@
         tr.appendChild(tdD); tr.appendChild(tdB); tr.appendChild(tdA);
         tbody.appendChild(tr);
       });
-      // Gráfico
+      // Gráfico + bounds automáticos
+      const points = entries.map(e => ({ x: e.date, y: e.balance }));
+      const yVals = points.map(p => p.y);
+      const xDates = points.map(p => p.x);
+      const { yMin, yMax } = computeYBounds(yVals);
+      const { xMin, xMax } = computeXBounds(xDates);
+
       const ctx = $('accountChart').getContext('2d');
-      const dataPoints = entries.map(e => ({ x: e.date, y: e.balance }));
       if (accountChart) accountChart.destroy();
       accountChart = new Chart(ctx, {
         type: 'line',
         data: {
           datasets: [{
             label: `${acc.name} (${acc.type==='debit'?'Débito':'Crédito'})`,
-            data: dataPoints,
+            data: points,
             borderColor: acc.type==='debit' ? '#22c55e' : '#60a5fa',
             backgroundColor: acc.type==='debit' ? 'rgba(34,197,94,.18)' : 'rgba(96,165,250,.18)',
             tension: .2, pointRadius: 3, fill: true
@@ -600,8 +646,8 @@
         options: {
           responsive: true,
           scales: {
-            x: { type:'time', time:{ unit:'day' }, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' } },
-            y: { beginAtZero: true, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
+            x: { type:'time', time:{ unit:'day' }, min:xMin, max:xMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' } },
+            y: { beginAtZero: false, min:yMin, max:yMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
           },
           plugins: {
             legend: { labels:{ color:'#e5e7eb' } },
@@ -638,16 +684,21 @@
         tr.appendChild(tdD); tr.appendChild(tdB); tr.appendChild(tdA);
         tbody.appendChild(tr);
       });
-      // Gráfico
+      // Gráfico + bounds automáticos
+      const points = entries.map(e => ({ x: e.date, y: e.balance }));
+      const yVals = points.map(p => p.y);
+      const xDates = points.map(p => p.x);
+      const { yMin, yMax } = computeYBounds(yVals);
+      const { xMin, xMax } = computeXBounds(xDates);
+
       const ctx = $('fundChart').getContext('2d');
-      const dataPoints = entries.map(e => ({ x: e.date, y: e.balance }));
       if (fundChart) fundChart.destroy();
       fundChart = new Chart(ctx, {
         type: 'line',
         data: {
           datasets: [{
             label: `${fund.name} (Fondo)`,
-            data: dataPoints,
+            data: points,
             borderColor: '#f8dfa6',
             backgroundColor: 'rgba(248,223,166,.18)',
             tension: .2, pointRadius: 3, fill: true
@@ -656,8 +707,8 @@
         options: {
           responsive: true,
           scales: {
-            x: { type:'time', time:{ unit:'day' }, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' } },
-            y: { beginAtZero: true, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
+            x: { type:'time', time:{ unit:'day' }, min:xMin, max:xMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' } },
+            y: { beginAtZero: false, min:yMin, max:yMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
           },
           plugins: {
             legend: { labels:{ color:'#e5e7eb' } },
@@ -668,18 +719,25 @@
     }
 
     function renderNetWorthPanel(){
+      // KPIs actuales (últimas entradas)
       const { totalAssets, totalCredit, net } = computeTotalsNow(state);
       $('nwTotalAssets').textContent  = formatCOP(totalAssets);
       $('nwTotalCredit').textContent  = formatCOP(totalCredit);
       $('nwNetWorth').textContent     = formatCOP(net);
 
-      // Serie histórica agregada (con fondos)
+      // Serie histórica agregada
       const series = buildAggregateSeries(state);
-      const ctxNW = $('netWorthChart').getContext('2d');
       const pointsNet = series.map(p => ({ x: p.date, y: p.net }));
       const pointsAssets = series.map(p => ({ x: p.date, y: p.assets }));
       const pointsCredit = series.map(p => ({ x: p.date, y: p.credit }));
 
+      // Bounds para línea de Net Worth (usar todos los datasets)
+      const allY = [...pointsNet, ...pointsAssets, ...pointsCredit].map(p => p.y);
+      const allX = series.map(p => p.date);
+      const { yMin, yMax } = computeYBounds(allY);
+      const { xMin, xMax } = computeXBounds(allX);
+
+      const ctxNW = $('netWorthChart').getContext('2d');
       if (netWorthChart) netWorthChart.destroy();
       netWorthChart = new Chart(ctxNW, {
         type:'line',
@@ -693,8 +751,8 @@
         options:{
           responsive:true,
           scales:{
-            x:{ type:'time', time:{ unit:'day' }, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' }},
-            y:{ beginAtZero:true, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
+            x:{ type:'time', time:{ unit:'day' }, min:xMin, max:xMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8' }},
+            y:{ beginAtZero:false, min:yMin, max:yMax, grid:{ color:'rgba(255,255,255,.05)' }, ticks:{ color:'#94a3b8', callback:(v)=>formatCOP(v) } }
           },
           plugins:{
             legend:{ labels:{ color:'#e5e7eb' } },
@@ -703,7 +761,9 @@
         }
       });
 
-      // Dona Activos vs Crédito (estado actual)
+      // Dona por fecha seleccionada
+      const dateSel = toISO($('mixDate')?.value) || todayISO();
+      const at = computeTotalsAtDate(state, dateSel);
       const ctxMix = $('mixChart').getContext('2d');
       if (mixChart) mixChart.destroy();
       mixChart = new Chart(ctxMix, {
@@ -711,7 +771,7 @@
         data: {
           labels: ['Activos (Débito + Fondos)', 'Crédito (deudas)'],
           datasets: [{
-            data: [totalAssets, totalCredit],
+            data: [at.assets, at.credit],
             backgroundColor: ['rgba(34,197,94,.7)', 'rgba(96,165,250,.7)'],
             borderColor: ['#22c55e', '#60a5fa'], borderWidth: 1
           }]
@@ -743,7 +803,6 @@
       $('tabFunds').setAttribute('aria-selected', String(isFund));
       $('tabNetWorth').setAttribute('aria-selected', String(isNW));
 
-      // Refresh al entrar a vistas con charts
       if (isAcc) renderAccountView();
       if (isFund) renderFundView();
       if (isNW) renderNetWorthPanel();
@@ -832,6 +891,11 @@
     $('selAccount').addEventListener('change', () => renderAccountView());
     $('selFund').addEventListener('change', () => renderFundView());
 
+    // ========= Evento: Fecha de la dona =========
+    $('mixDate').addEventListener('change', () => {
+      renderNetWorthPanel();
+    });
+
     // ========= Init =========
     (function init(){
       if (localStorage.getItem(STORE_V3)) {
@@ -841,6 +905,7 @@
       $('naCreated').value = todayISO();
       $('nfCreated').value = todayISO();
       $('entryDate').value = todayISO();
+      $('mixDate').value = todayISO();
 
       // Inicializar selects
       populateEntryEntitySelect();
