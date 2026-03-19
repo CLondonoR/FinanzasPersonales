@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seguimiento de Finanzas — Cuentas y Patrimonio Neto</title>
+  <meta name="description" content="App simple para registrar cuentas débito y crédito y calcular patrimonio neto." />
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --panel:#111827;     /* gray-900 */
+      --muted:#94a3b8;     /* slate-400 */
+      --text:#e5e7eb;      /* gray-200 */
+      --accent:#22c55e;    /* green-500 */
+      --accent-2:#60a5fa;  /* blue-400 */
+      --danger:#ef4444;    /* red-500 */
+      --warning:#f59e0b;   /* amber-500 */
+      --card:#0b1220;
+      --border:#1f2937;    /* gray-800 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background: radial-gradient(1200px 600px at 10% -10%, #0b1220 20%, rgba(11,18,32,0) 60%) ,
+                  radial-gradient(1200px 800px at 110% 10%, rgba(12,29,56,0.35) 10%, rgba(11,18,32,0) 60%),
+                  var(--bg);
+      color:var(--text);
+      font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    .container{
+      max-width:1000px;
+      margin: 24px auto 40px;
+      padding: 0 16px;
+    }
+    header{
+      display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px;
+    }
+    h1{ margin:0; font-size:22px; letter-spacing:.2px }
+    .subtitle{ color:var(--muted); font-size:13px }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:16px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:16px;
+    }
+    @media (max-width: 820px){ .grid{ grid-template-columns: 1fr } }
+    label{ display:block; font-size:13px; color:var(--muted); margin-bottom:6px }
+    input[type="text"], input[type="number"], select{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border);
+      background: #0b1020; color:var(--text);
+      outline:none;
+    }
+    input::placeholder{ color:#6b7280 }
+    .row{ display:flex; gap:12px; align-items:end }
+    .row > * { flex: 1 }
+    .help{ font-size:12px; color:var(--muted); margin-top:4px }
+    .actions{ display:flex; gap:10px; flex-wrap:wrap }
+    button{
+      appearance:none; border:1px solid var(--border); background:#0b1020; color:var(--text);
+      padding:10px 14px; border-radius:10px; cursor:pointer;
+    }
+    button.primary{ background: linear-gradient(180deg, rgba(34,197,94,.15), rgba(34,197,94,.05)); border-color: rgba(34,197,94,.3) }
+    button.primary:hover{ filter:brightness(1.05) }
+    button.ghost:hover{ background:#0f162a }
+    button.danger{ border-color: rgba(239,68,68,.35); background: linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.04)) }
+    table{ width:100%; border-collapse: collapse; }
+    th, td{ text-align:left; padding:10px 8px; border-bottom:1px solid var(--border); font-size:14px }
+    th{ color:var(--muted); font-weight:600; }
+    tbody tr:hover{ background: rgba(255,255,255,.02) }
+    .badge{
+      display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+      border:1px solid var(--border); font-size:12px; color:#cbd5e1;
+      background: #0a1120;
+    }
+    .badge.debit{ border-color: rgba(34,197,94,.35); color:#c7f9d4; background: rgba(34,197,94,.08) }
+    .badge.credit{ border-color: rgba(96,165,250,.4); color:#e0edff; background: rgba(96,165,250,.08) }
+    .totals{
+      display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:12px;
+    }
+    @media (max-width: 640px){ .totals{ grid-template-columns: 1fr } }
+    .kpi{ padding:14px; border:1px solid var(--border); border-radius:12px; background:#0b1020 }
+    .kpi h3{ margin:0 0 8px; font-size:13px; color:var(--muted) }
+    .kpi .value{ font-size:22px; font-weight:700 }
+    .kpi.green .value{ color: var(--accent) }
+    .kpi.blue .value{ color: var(--accent-2) }
+    .kpi.gold .value{ color: #f8dfa6 }
+    .muted{ color:var(--muted) }
+    .footer{ margin-top:18px; color:var(--muted); font-size:12px }
+    .sr-only{ position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden }
+    .warn{ color: var(--warning) }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Finanzas personales — Cuentas y Patrimonio</h1>
+        <div class="subtitle">Registra cuentas débito y tarjetas de crédito. Calculamos tu patrimonio neto automáticamente.</div>
+      </div>
+      <div class="muted" id="lastUpdated" aria-live="polite"></div>
+    </header>
+
+    <div class="grid" role="region" aria-label="Gestión de cuentas">
+      <!-- Formulario -->
+      <section class="card" aria-labelledby="formTitle">
+        <h2 id="formTitle" style="margin:0 0 10px;font-size:16px">Agregar / Editar cuenta</h2>
+        <form id="accountForm" autocomplete="on" novalidate>
+          <input type="hidden" id="editId" />
+          <div class="row">
+            <div>
+              <label for="name">Nombre de la cuenta</label>
+              <input id="name" name="name" type="text" placeholder="Ej: Ahorros Bancolombia" required />
+              <div class="help">Corto y descriptivo.</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="type">Tipo</label>
+              <select id="type" name="type" required>
+                <option value="" disabled selected>Selecciona tipo</option>
+                <option value="debit">Cuenta débito (activo)</option>
+                <option value="credit">Tarjeta de crédito (deuda)</option>
+              </select>
+              <div class="help">Las cuentas débito suman a tus activos. Las tarjetas de crédito suman a tus deudas.</div>
+            </div>
+            <div>
+              <label for="balance">
+                Saldo <span id="balanceLabelHint" class="muted">(COP)</span>
+              </label>
+              <input id="balance" name="balance" type="text" inputmode="decimal" placeholder="Ej: 1.200.000 o 1200000.00" />
+              <div class="help" id="balanceHelp">Para tarjetas, ingresa el <strong>monto adeudado</strong> actual (≥ 0).</div>
+            </div>
+          </div>
+
+          <div class="actions" style="margin-top:12px">
+            <button class="primary" type="submit" id="submitBtn">Guardar cuenta</button>
+            <button class="ghost" type="reset" id="resetBtn">Limpiar</button>
+            <button class="danger" type="button" id="deleteAllBtn" title="Eliminar todas las cuentas">Eliminar todo</button>
+          </div>
+          <div class="help warn" id="errorArea" role="alert" style="display:none;margin-top:8px"></div>
+        </form>
+      </section>
+
+      <!-- Tabla y totales -->
+      <section class="card" aria-labelledby="listTitle">
+        <h2 id="listTitle" style="margin:0 0 10px;font-size:16px">Cuentas registradas</h2>
+        <div style="overflow:auto; border:1px solid var(--border); border-radius:12px">
+          <table aria-describedby="tableHelp">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Saldo</th>
+                <th style="width:160px">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <!-- Filas generadas dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+        <div id="tableHelp" class="help" style="margin-top:6px">Los saldos se almacenan localmente en tu navegador (no se envían a ningún servidor).</div>
+
+        <div class="totals" aria-live="polite" aria-atomic="true">
+          <div class="kpi green">
+            <h3>Total Débito (activos)</h3>
+            <div class="value" id="totalDebit">$ 0</div>
+          </div>
+          <div class="kpi blue">
+            <h3>Total Crédito (deudas)</h3>
+            <div class="value" id="totalCredit">$ 0</div>
+          </div>
+          <div class="kpi gold">
+            <h3>Patrimonio neto</h3>
+            <div class="value" id="netWorth">$ 0</div>
+          </div>
+        </div>
+        <div class="footer">
+          Fórmula: <code>Patrimonio neto = Total Débito − Total Crédito</code>.
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ========= Utilidades de formato =========
+    const LOCALE = 'es-CO';
+    const CURRENCY = 'COP';
+    const fmt = new Intl.NumberFormat(LOCALE, { style:'currency', currency: CURRENCY, maximumFractionDigits: 2 });
+
+    /**
+     * Parseo robusto de montos:
+     * - Acepta "1.234.567,89" (europeo/latam) => 1234567.89
+     * - Acepta "1234567.89" (US) => 1234567.89
+     * - Acepta "1 234 567,89" => 1234567.89
+     */
+    function parseMonto(raw){
+      if (typeof raw === 'number') return raw;
+      if (!raw) return NaN;
+      let s = String(raw).trim().replace(/\s/g,'');
+      const hasComma = s.includes(',');
+      const hasDot = s.includes('.');
+
+      if (hasComma && hasDot){
+        // Asume '.' separador de miles y ',' decimal
+        s = s.replace(/\./g,'').replace(',', '.');
+      } else if (hasComma && !hasDot){
+        // Solo coma -> probablemente decimal
+        s = s.replace(',', '.');
+      } // si solo punto, ya está bien
+      // Elimina cualquier carácter no numérico o punto/guion
+      s = s.replace(/[^0-9.\-]/g, '');
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function formatCOP(n){
+      try { return fmt.format(n); }
+      catch { return '$ ' + (Math.round(n*100)/100).toLocaleString(LOCALE); }
+    }
+
+    // ========= Estado + almacenamiento =========
+    const STORE_KEY = 'finance_accounts_v1';
+    function loadAccounts(){
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return arr;
+      } catch(e){}
+      return [];
+    }
+    function saveAccounts(list){
+      localStorage.setItem(STORE_KEY, JSON.stringify(list));
+      const el = document.getElementById('lastUpdated');
+      el.textContent = 'Actualizado: ' + new Date().toLocaleString(LOCALE);
+    }
+
+    // ========= Render =========
+    function render(){
+      const tbody = document.getElementById('tableBody');
+      const accounts = loadAccounts();
+      tbody.innerHTML = '';
+
+      let totalDebit = 0, totalCredit = 0;
+
+      accounts.forEach(acc => {
+        if (acc.type === 'debit') totalDebit += acc.balance;
+        else if (acc.type === 'credit') totalCredit += acc.balance;
+
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.textContent = acc.name;
+
+        const tdType = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + (acc.type === 'debit' ? 'debit' : 'credit');
+        badge.innerHTML = acc.type === 'debit'
+          ? 'Débito'
+          : 'Crédito';
+        tdType.appendChild(badge);
+
+        const tdBal = document.createElement('td');
+        tdBal.textContent = formatCOP(acc.balance);
+
+        const tdAct = document.createElement('td');
+        const btnEdit = document.createElement('button');
+        btnEdit.textContent = 'Editar';
+        btnEdit.className = 'ghost';
+        btnEdit.addEventListener('click', () => startEdit(acc.id));
+
+        const btnDel = document.createElement('button');
+        btnDel.textContent = 'Eliminar';
+        btnDel.className = 'danger';
+        btnDel.addEventListener('click', () => removeOne(acc.id));
+
+        tdAct.appendChild(btnEdit);
+        tdAct.appendChild(document.createTextNode(' '));
+        tdAct.appendChild(btnDel);
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tr.appendChild(tdBal);
+        tr.appendChild(tdAct);
+
+        tbody.appendChild(tr);
+      });
+
+      const net = totalDebit - totalCredit;
+      document.getElementById('totalDebit').textContent  = formatCOP(totalDebit);
+      document.getElementById('totalCredit').textContent = formatCOP(totalCredit);
+      document.getElementById('netWorth').textContent    = formatCOP(net);
+
+      // Actualiza hint del campo según tipo
+      const typeSel = document.getElementById('type').value;
+      const help = document.getElementById('balanceHelp');
+      if (typeSel === 'credit') {
+        help.innerHTML = 'Para tarjeta de crédito, ingresa el <strong>monto adeudado</strong> actual (≥ 0).';
+      } else if (typeSel === 'debit') {
+        help.textContent = 'Para cuenta débito, ingresa el saldo disponible actual (≥ 0).';
+      } else {
+        help.innerHTML = 'Para tarjetas, ingresa el <strong>monto adeudado</strong>. Para débito, el saldo disponible.';
+      }
+    }
+
+    // ========= Acciones =========
+    function startEdit(id){
+      const accounts = loadAccounts();
+      const acc = accounts.find(a => a.id === id);
+      if (!acc) return;
+      document.getElementById('editId').value = String(acc.id);
+      document.getElementById('name').value = acc.name;
+      document.getElementById('type').value = acc.type;
+      document.getElementById('balance').value = String(acc.balance);
+      document.getElementById('submitBtn').textContent = 'Actualizar cuenta';
+      document.getElementById('formTitle').textContent = 'Editar cuenta';
+      render(); // refresca hints
+    }
+
+    function clearForm(){
+      document.getElementById('accountForm').reset();
+      document.getElementById('editId').value = '';
+      document.getElementById('submitBtn').textContent = 'Guardar cuenta';
+      document.getElementById('formTitle').textContent = 'Agregar / Editar cuenta';
+      document.getElementById('errorArea').style.display = 'none';
+    }
+
+    function removeOne(id){
+      const accounts = loadAccounts();
+      const acc = accounts.find(a => a.id === id);
+      const name = acc ? acc.name : 'esta cuenta';
+      if (!confirm(`¿Eliminar "${name}"? Esta acción no se puede deshacer.`)) return;
+      const next = accounts.filter(a => a.id !== id);
+      saveAccounts(next);
+      render();
+      // si estaba editándola, limpia el formulario
+      if (String(document.getElementById('editId').value) === String(id)) clearForm();
+    }
+
+    function removeAll(){
+      if (!confirm('¿Eliminar TODAS las cuentas? Esta acción es irreversible.')) return;
+      saveAccounts([]);
+      render();
+      clearForm();
+    }
+
+    // ========= Eventos =========
+    document.getElementById('type').addEventListener('change', render);
+    document.getElementById('deleteAllBtn').addEventListener('click', removeAll);
+    document.getElementById('resetBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      clearForm();
+      render();
+    });
+
+    document.getElementById('accountForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const err = document.getElementById('errorArea');
+      err.style.display = 'none';
+      err.textContent = '';
+
+      const idEdit = document.getElementById('editId').value.trim();
+      const name = document.getElementById('name').value.trim();
+      const type = document.getElementById('type').value;
+      const rawBal = document.getElementById('balance').value;
+      const balance = parseMonto(rawBal);
+
+      // Validaciones
+      if (!name){
+        err.style.display = 'block'; err.textContent = 'Por favor, ingresa un nombre de cuenta.';
+        return;
+      }
+      if (!type){
+        err.style.display = 'block'; err.textContent = 'Selecciona el tipo de cuenta.';
+        return;
+      }
+      if (!Number.isFinite(balance) || balance < 0){
+        err.style.display = 'block'; err.innerHTML = 'Ingresa un saldo válido (número ≥ 0).<br/>Sugerencia: puedes escribir <em>1200000</em>, <em>1,200,000</em> o <em>1.200.000</em>.';
+        return;
+      }
+
+      const accounts = loadAccounts();
+
+      if (idEdit){ // actualizar
+        const idx = accounts.findIndex(a => String(a.id) === idEdit);
+        if (idx !== -1){
+          accounts[idx] = { ...accounts[idx], name, type, balance };
+        }
+      } else { // crear nuevo
+        const newAcc = { id: Date.now(), name, type, balance };
+        accounts.push(newAcc);
+      }
+
+      saveAccounts(accounts);
+      render();
+      clearForm();
+    });
+
+    // Inicialización
+    (function init(){
+      // Mostrar última actualización si existía
+      if (localStorage.getItem(STORE_KEY)) {
+        document.getElementById('lastUpdated').textContent = 'Actualizado: ' + new Date().toLocaleString(LOCALE);
+      }
+      render();
+    })();
+  </script>
+</body>
+</html>
